@@ -104,4 +104,6 @@ ENV/
 AIND-Projects-Master/
 *.zip
 useful-packages/
+AIND-Projects/AIND-Recognizer/submissions/
+asl_recognizer.html
 

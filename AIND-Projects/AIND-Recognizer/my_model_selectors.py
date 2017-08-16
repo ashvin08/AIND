@@ -75,9 +75,27 @@ class SelectorBIC(ModelSelector):
         :return: GaussianHMM object
         """
         warnings.filterwarnings("ignore", category=DeprecationWarning)
+        #L = Likelihood of fitted model
+        #p = Number of parameters
+        #p =  = n^2 + 2*d*n - 1
+        #N = Number of data points
+        bic_score = float("inf")
+        best_num_of_states = None
+        try:
+            for states in range(self.min_n_components, self.max_n_components + 1):
+                model = self.base_model(states)
+                logL = model.score(self.X, self.lengths)
+                ##http://hmmlearn.readthedocs.io/en/latest/api.html#gaussianhmm
+                p = states ** 2 + states*2*model.n_features - 1
+                currect_bic_score = -2 * logL + p * math.log(model.n_features)
+                #lower the score better the model
+                if currect_bic_score < bic_score:
+                    bic_score = currect_bic_score
+                    best_num_of_states = states
+        except:
+            pass
 
-        # TODO implement model selection based on BIC scores
-        raise NotImplementedError
+        return self.base_model(best_num_of_states)
 
 
 class SelectorDIC(ModelSelector):
@@ -87,13 +105,33 @@ class SelectorDIC(ModelSelector):
     Document Analysis and Recognition, 2003. Proceedings. Seventh International Conference on. IEEE, 2003.
     http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.58.6208&rep=rep1&type=pdf
     DIC = log(P(X(i)) - 1/(M-1)SUM(log(P(X(all but i))
+
+    M = Set of categories or classes => Number of words in the topology
     '''
 
     def select(self):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
+        dic_score = float("-inf")
+        best_num_of_states = None
+        logLList = []
+        m = len(self.words)
+        for states in range(self.min_n_components, self.max_n_components + 1):
+            sum_of_logL = 0
+            try:
+                model = self.base_model(states)
+                logL = model.score(self.X, self.lengths)
+                logLList.append(logL)
+                sum_of_logL += logL
+                for idx, logL in enumerate(logLList):
+                    anti_evidence = (sum_of_logL - logL) / (m - 1)
+                    current_dic_score = logL - anti_evidence
+                    if current_dic_score > dic_score:
+                        dic_score = current_dic_score
+                        best_num_of_states = self.min_n_components + idx
+            except:
+                pass
 
-        # TODO implement model selection based on DIC scores
-        raise NotImplementedError
+        return self.base_model(best_num_of_states)
 
 
 class SelectorCV(ModelSelector):
@@ -103,6 +141,38 @@ class SelectorCV(ModelSelector):
 
     def select(self):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
+        best_mean = float("-inf")
+        best_num_of_states = None
+        split_method = KFold(n_splits=3, shuffle = False, random_state = None)
 
-        # TODO implement model selection using CV
-        raise NotImplementedError
+
+        for states in range(self.min_n_components, self.max_n_components + 1):
+            try:
+                #Can the data be split into folds
+                if len(self.sequences) > 2:
+                    fold_scores = []
+                    for train_idx, test_idx in split_method.split(self.sequences):
+                        self.X, self.lengths = combine_sequences(train_idx, self.sequences)
+                        X, length = combine_sequences(test_idx, self.sequences)
+
+                        # train base model using training data
+                        model = self.base_model(states)
+                        #log likelihood is calculated against test data
+                        logL = model.score(X, length)
+                        fold_scores.append(logL)
+                    #Calculate mean for the current state
+                    current_mean = np.mean(fold_scores)
+                # Use the base model log likelihood
+                else:
+                    model = self.base_model(states)
+                    current_mean = model.score(self.X, self.lengths)
+
+                #Calculate the best state
+                if current_mean > best_mean:
+                    best_mean = current_mean
+                    best_num_of_states = states
+
+            except:
+                pass
+
+        return self.base_model(best_num_of_states)
